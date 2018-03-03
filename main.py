@@ -4,7 +4,7 @@ import asyncio
 import sys
 import os
 import json
-import pickle #kmn
+import math
 
 class BotClient(discord.Client):
     def __init__(self, *args, **kwargs):
@@ -18,7 +18,9 @@ class BotClient(discord.Client):
             'help' : self.help,
             'prefix' : self.change_prefix,
             'set' : self.set_questions,
-            'start' : self.submit_response
+            'start' : self.submit_response,
+            #'questions' : self.view_questions,
+            'log' : self.view_responses
         }
 
         try:
@@ -51,12 +53,14 @@ class BotClient(discord.Client):
             json.dump([d.__dict__ for d in self.data], f)
 
     async def on_message(self, message):
+        print(message.content)
+
         if len([d for d in self.data if d.id == message.guild.id]) == 0:
             self.data.append(ServerData(**{
                 'id' : message.guild.id,
                 'prefix' : '%',
                 'questions' : [],
-                'responses' : {}
+                'responses' : []
                 }
             ))
 
@@ -73,7 +77,7 @@ class BotClient(discord.Client):
         if message.content[0:len(prefix)] == prefix:
             command = (message.content + ' ')[len(prefix):message.content.find(' ')]
             if command in self.commands:
-                stripped = message.content[message.content.find(' '):].strip()
+                stripped = (message.content + ' ')[message.content.find(' '):].strip()
                 await self.commands[command](message, stripped)
                 return True
 
@@ -88,11 +92,16 @@ class BotClient(discord.Client):
     async def change_prefix(self, message, stripped):
         server = self.get_server(message.guild)
 
-        server.prefix = stripped
-        await message.channel.send('Prefix changed to {}'.format(server.prefix))
+        if stripped:
+            stripped += ' '
+            server.prefix = stripped[:stripped.find(' ')]
+            await message.channel.send('Prefix changed to {}'.format(server.prefix))
 
-        with open('data.json', 'w') as f:
-            json.dump([d.__dict__ for d in self.data], f)
+            with open('data.json', 'w') as f:
+                json.dump([d.__dict__ for d in self.data], f)
+
+        else:
+            await message.channel.send('Please use this command as `prefix <prefix>`')
 
     async def ping(self, message, stripped):
         t = message.created_at.timestamp()
@@ -146,13 +155,49 @@ class BotClient(discord.Client):
                     await message.channel.send('Application cancelled.')
                     return
 
-            server.responses[str(message.author.id)] = response_list
+            server.responses.append(response_list + [message.author.id])
             await message.channel.send('Thank you for your application!')
 
             with open('data.json', 'w') as f:
                 json.dump([d.__dict__ for d in self.data], f)
 
     async def view_responses(self, message, stripped):
+        if message.author.guild_permissions.administrator:
+            server = self.get_server(message.guild)
+
+            if not stripped: #no page provided
+                page = 0
+            elif all([x in '0123456789' for x in stripped]): #page number is good
+                page = int(stripped) - 1
+            else: #BIG BAD
+                await message.channel.send('Error: argument 1 must be <unsigned integer> page number')
+                return
+
+            total_pages = math.ceil(len(server.responses) / 5)
+            if page > total_pages:
+                await message.channel.send('Error: invalid page number')
+                return
+
+            upper = (page + 1) * 5
+            if upper > len(server.responses):
+                upper = len(server.responses)
+
+            details = server.responses[page*5:upper]
+            e = discord.Embed(title='Log')
+            e.set_footer(text='Page {}/{} (results {}-{} of {})'.format(page+1, total_pages, page*5 +1, upper, len(server.responses)))
+            for resp in details:
+                for question in resp:
+                    if isinstance(question, int):
+                        e.add_field(name='User:', value='<@{}>'.format(question), inline=True)
+                    else:
+                        e.add_field(name=server.questions[resp.index(question)], value=question)
+            m = await message.channel.send(embed=e)
+            #emojis = ['⬅️', '➡️', '❌', '🗑️']
+            emojis = ['\N{LEFTWARDS BLACK ARROW}', '\N{BLACK RIGHTWARDS ARROW}', '\U0000274C', '\U0001F5D1']
+
+            for emoji in emojis:
+                await m.add_reaction(emoji)
+
 
 try: ## token grabbing code
     with open('token','r') as token_f:
