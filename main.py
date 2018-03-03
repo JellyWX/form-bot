@@ -178,26 +178,45 @@ class BotClient(discord.Client):
                 await message.channel.send('Error: invalid page number')
                 return
 
-            upper = (page + 1) * 5
-            if upper > len(server.responses):
-                upper = len(server.responses)
+            while True:
+                upper = (page + 1) * 5
+                if upper > len(server.responses):
+                    upper = len(server.responses)
 
-            details = server.responses[page*5:upper]
-            e = discord.Embed(title='Log')
-            e.set_footer(text='Page {}/{} (results {}-{} of {})'.format(page+1, total_pages, page*5 +1, upper, len(server.responses)))
-            for resp in details:
-                for question in resp:
-                    if isinstance(question, int):
-                        e.add_field(name='User:', value='<@{}>'.format(question), inline=True)
-                    else:
-                        e.add_field(name=server.questions[resp.index(question)], value=question)
-            m = await message.channel.send(embed=e)
-            #emojis = ['⬅️', '➡️', '❌', '🗑️']
-            emojis = ['\N{LEFTWARDS BLACK ARROW}', '\N{BLACK RIGHTWARDS ARROW}', '\U0000274C', '\U0001F5D1']
+                details = server.responses[page*5:upper]
+                e = discord.Embed(title='Log')
+                e.set_footer(text='Page {}/{} (results {}-{} of {})'.format(page+1, total_pages, page*5 +1, upper, len(server.responses)))
+                for resp in details:
+                    for question in resp:
+                        if isinstance(question, int):
+                            e.add_field(name='User:', value='<@{}>'.format(question), inline=True)
+                        else:
+                            e.add_field(name=server.questions[resp.index(question)], value=question)
+                m = await message.channel.send(embed=e)
+                emojis = ['\U00002B05', '\U000027A1', '\U0000274C', '\U0001F5D1']
 
-            for emoji in emojis:
-                await m.add_reaction(emoji)
+                for emoji in emojis:
+                    await m.add_reaction(emoji)
 
+                try:
+                    reaction, _ = await client.wait_for('reaction_add', timeout=60.0, check=lambda reaction, user: reaction.message.id == m.id and user == message.author)
+                except:
+                    await m.clear_reactions()
+                    return
+
+                if reaction.emoji == '\U00002B05':
+                    await m.delete()
+                    page = page - 1 if page else page
+                elif reaction.emoji == '\U000027A1':
+                    await m.delete()
+                    page = page + 1 if page != total_pages else page
+                elif reaction.emoji == '\U0000274C':
+                    await m.delete()
+                    return
+                elif reaction.emoji == '\U0001F5D1':
+                    await m.delete()
+                    server.responses = []
+                    return
 
 try: ## token grabbing code
     with open('token','r') as token_f:
