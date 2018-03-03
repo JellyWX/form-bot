@@ -19,7 +19,7 @@ class BotClient(discord.Client):
             'prefix' : self.change_prefix,
             'set' : self.set_questions,
             'start' : self.submit_response,
-            #'questions' : self.view_questions,
+            'questions' : self.view_questions,
             'log' : self.view_responses
         }
 
@@ -53,8 +53,6 @@ class BotClient(discord.Client):
             json.dump([d.__dict__ for d in self.data], f)
 
     async def on_message(self, message):
-        print(message.content)
-
         if len([d for d in self.data if d.id == message.guild.id]) == 0:
             self.data.append(ServerData(**{
                 'id' : message.guild.id,
@@ -217,6 +215,10 @@ class BotClient(discord.Client):
                     await m.delete()
                     server.responses = []
                     return
+
+    async def view_questions(self, message, stripped):
+        server = self.get_server(message.guild)
+        await message.channel.send(embed=discord.Embed(title='Questions', description='\n'.join(server.questions)))
 
 try: ## token grabbing code
     with open('token','r') as token_f:
