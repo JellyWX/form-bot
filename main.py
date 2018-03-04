@@ -43,14 +43,8 @@ class BotClient(discord.Client):
             }
         ))
 
-        with open('data.json', 'w') as f:
-            json.dump([d.__dict__ for d in self.data], f)
-
     async def on_guild_remove(self, guild):
         self.data = [d for d in self.data if d.id != guild.id]
-
-        with open('data.json', 'w') as f:
-            json.dump([d.__dict__ for d in self.data], f)
 
     async def on_message(self, message):
         if len([d for d in self.data if d.id == message.guild.id]) == 0:
@@ -62,8 +56,9 @@ class BotClient(discord.Client):
                 }
             ))
 
-        if not await self.get_cmd(message):
-            pass
+        if await self.get_cmd(message):
+            with open('data.json', 'w') as f:
+                json.dump([d.__dict__ for d in self.data], f)
 
     async def get_cmd(self, message):
         if isinstance(message.channel, discord.DMChannel) or message.author.bot or message.content == None:
@@ -94,9 +89,6 @@ class BotClient(discord.Client):
             stripped += ' '
             server.prefix = stripped[:stripped.find(' ')]
             await message.channel.send('Prefix changed to {}'.format(server.prefix))
-
-            with open('data.json', 'w') as f:
-                json.dump([d.__dict__ for d in self.data], f)
 
         else:
             await message.channel.send('Please use this command as `prefix <prefix>`')
@@ -133,8 +125,6 @@ class BotClient(discord.Client):
                 await message.channel.send('Your questions are: {}'.format(', '.join(questions)))
                 server.questions = questions
 
-                with open('data.json', 'w') as f:
-                    json.dump([d.__dict__ for d in self.data], f)
         else:
             await message.channel.send('You must be an admin to run this command')
 
@@ -155,9 +145,6 @@ class BotClient(discord.Client):
 
             server.responses.append(response_list + [message.author.id])
             await message.channel.send('Thank you for your application!')
-
-            with open('data.json', 'w') as f:
-                json.dump([d.__dict__ for d in self.data], f)
 
     async def view_responses(self, message, stripped):
         if message.author.guild_permissions.administrator:
@@ -185,11 +172,16 @@ class BotClient(discord.Client):
                 e = discord.Embed(title='Log')
                 e.set_footer(text='Page {}/{} (results {}-{} of {})'.format(page+1, total_pages, page*5 +1, upper, len(server.responses)))
                 for resp in details:
+                    name = ''
+                    content = ''
                     for question in resp:
                         if isinstance(question, int):
-                            e.add_field(name='User:', value='<@{}>'.format(question), inline=True)
+                            name = self.get_user(question).name + '#' + self.get_user(question).discriminator if self.get_user(question) != None else 'Unknown'
                         else:
-                            e.add_field(name=server.questions[resp.index(question)], value=question)
+                            q = server.questions[resp.index(question)]
+                            content += '**' + q + '**' + (': ' if q[-1] not in ':;' else ' ') + question + ' '
+                    e.add_field(name=name, value=content)
+
                 m = await message.channel.send(embed=e)
                 emojis = ['\U00002B05', '\U000027A1', '\U0000274C', '\U0001F5D1']
 
@@ -202,17 +194,18 @@ class BotClient(discord.Client):
                     await m.clear_reactions()
                     return
 
-                if reaction.emoji == '\U00002B05':
+                if reaction.emoji == '\U00002B05': # arrow left
                     await m.delete()
                     page = page - 1 if page else page
-                elif reaction.emoji == '\U000027A1':
+                elif reaction.emoji == '\U000027A1': # arrow right
                     await m.delete()
                     page = page + 1 if page != total_pages else page
-                elif reaction.emoji == '\U0000274C':
+                elif reaction.emoji == '\U0000274C': # cross
                     await m.delete()
                     return
-                elif reaction.emoji == '\U0001F5D1':
-                    await m.delete()
+                elif reaction.emoji == '\U0001F5D1': # wastebin
+                    await m.edit(embed=discord.Embed(title='Log', description='Log has been cleared'))
+                    await m.clear_reactions()
                     server.responses = []
                     return
 
